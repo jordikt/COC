@@ -1,0 +1,359 @@
+Ref.Orig ORIGEN D'AQUEST SCRIPT: MIGRACIO I UNIFICACIO DE TRES MAPATGES MIDI
+
+Aquest script no neix de zero. Unifica en un sol fitxer JS (MIDI Remote API v1.3) tres sistemes de mapatge MIDI que van conviure alhora fins a Cubase 14. En comprar Cubase 15 (principis de 2026), vaig decidir unificar els tres dispositius midi en un de sol, per aprofitar tot el potencial de la nova API v1.3 llançada amb C15 i evitar els problemes que donava tenir el mapatge MIDI repartit en tres llocs diferents.
+
+La migracio de tots els elements es va completar a la versio 5.1.9 del script, amb la unica excepcio de dos controls de feedback que es van deixar deliberadament al Dispositivo Generico (Legacy) i que encara viuen a Cubase 15. Aquests dos controls son el feedback de PUNCH IN i de PUNCH OUT. De la v6.0.0 a la v6.0.3, la feina s'ha centrat en neteja i documentacio.
+
+----------------------------------------------------------------------------------------------------------------------------------------
+ELS TRES MAPATGES MIDI ORIGINALS
+----------------------------------------------------------------------------------------------------------------------------------------
+
+C14_XML
+
+Es el 'Dispositivo Generico' de Cubase, que existeix a Cubase des de les versions mes antigues. Cubase 12 el va catalogar com a Legacy quan va treure el nou sistema de 'Midi Remote'. 'Dispositivo Generico' es el terme que usa Cubase en castella; en angles es diu 'Generic Remote', i es el terme amb que es coneix internacionalment. En aquest script i en la documentacio del meu setup sempre uso 'Dispositivo Generico'.
+
+Abans de Cubase 12, la configuracio MIDI de Cubase es feia exclusivament amb el Dispositivo Generico. Es guarda com un fitxer .xml. El meu sempre s'ha anomenat 'Dispositivo Generico 1.xml', amb els ports seguents:
+Input Port:     IAC Everybody > CubaseMidi
+Output Port:    IAC CubaseMidi > Everybody
+
+C14_JSON
+
+Es un Midi Remote creat amb l'Editor de Midi Remote de Cubase 12. A partir de Cubase 12 van començar a conviure aquest nou Midi Remote i el Dispositivo Generico C14_XML. Cubase crea dos arxius .json quan es crea un Midi Remote amb l'editor. En aquest cas:
+~/Documents/Steinberg/Cubase/MIDI Remote/Driver Scripts/Local/elgato/Stream Deck Plus/elgato_Stream Deck Plus.json
+~/Documents/Steinberg/Cubase/MIDI Remote/User Settings/elgato_Stream Deck Plus_5D45D422EFBF83F396C47B4EA25676E1_globalmappings.json
+
+Els ports usats per C14_JSON eren els mateixos que C14_XML:
+Input Port:     IAC Everybody > CubaseMidi
+Output Port:    IAC CubaseMidi > Everybody
+
+C14_JS
+
+Es un Midi Remote que vaig crear amb codi de la API a Cubase 13. A partir de Cubase 13 van començar a conviure aquest Midi Remote C14_JS amb el C14_JSON i el Dispositivo Generico C14_XML. El script .js que vaig crear per aquest Midi Remote C14_JS va ser:
+~/Documents/Steinberg/Cubase/MIDI Remote/Driver Scripts/Local/CubaseMidiApi/Everybody/CubaseMidiApi_Everybody.js
+
+Cubase crea un arxiu .json adicional quan es crea un Midi Remote amb codi de la API:
+~/Documents/Steinberg/Cubase/MIDI Remote/User Settings/CubaseMidiApi_Everybody_2CF8112FBD98EE8BB9BC2F39D824F010_globalmappings.json
+
+IMPORTANT: el C14_JS usava uns ports PROPIS, diferents dels altres dos mapatges:
+Input Port:     IAC Everybody > CubaseMidiApi
+Output Port:    IAC CubaseMidiApi > Everybody
+
+Aquest detall es clau per entendre COC: com que el C14_JS usava el seu propi port d'entrada (CubaseMidiApi) i aquest Midi Remote es va eliminar, aquest port ha quedat completament mort (veure Regio Ref.Coc).
+
+----------------------------------------------------------------------------------------------------------------------------------------
+PER QUE EL MIDI REMOTE ACTUAL ES DIU COM ES DIU I TE ELS PORTS QUE TE
+----------------------------------------------------------------------------------------------------------------------------------------
+
+Aquest MIDI Remote actual (el d'aquest script) usa EXACTAMENT el mateix nom, els mateixos ports i el mateix path de carpetes que el C14_JSON:
+deviceDriver:   makeDeviceDriver('elgato', 'Stream Deck Plus', 'Jordi Calvet Torras')
+Input Port:     IAC Everybody > CubaseMidi
+Output Port:    IAC CubaseMidi > Everybody
+Path:           ~/Documents/Steinberg/Cubase/MIDI Remote/Driver Scripts/Local/elgato/Stream Deck Plus/elgato_Stream Deck Plus.js
+
+Aixo NO es casual ni descuidat: es la solucio a un bug de Cubase que em va costar moltes hores. Queda documentat aqui perque, d'entrada, sembla contradictori reutilitzar el nom i els ports d'un dels mapatges que justament volia substituir.
+
+LA INTENCIO INICIAL
+
+La idea logica era reutilitzar els ports 'CubaseMidi' (els que ja usaven el Dispositivo Generico i el C14_JSON), perque tot el meu setup ja enviava i rebia midi per aquests ports. Aixi nomes hauria hagut de reconfigurar les fonts que usaven els ports 'CubaseMidiApi' (els del C14_JS). Era mes segur i donava menys feina. El que SI volia era posar-li un nom NOU al MIDI Remote, per no confondre'l amb el C14_JSON.
+
+EL PROBLEMA
+
+En crear un MIDI Remote amb un nom nou pero amb binding als ports 'CubaseMidi', el MIDI Remote feia coses estranyes: desapareixia aleatoriament i no responia be. El binding als ports es fa amb aquestes linies:
+var midiInput  = deviceDriver.mPorts.makeMidiInput()
+var midiOutput = deviceDriver.mPorts.makeMidiOutput()
+deviceDriver.makeDetectionUnit().detectPortPair(midiInput, midiOutput)
+    .expectInputNameEquals('IAC Everybody > CubaseMidi')
+    .expectOutputNameEquals('IAC CubaseMidi > Everybody')
+
+LA CAUSA
+
+Cubase desa la configuracio del MIDI Remote a DOS llocs: a nivell global, pero TAMBE dins de cada projecte. Quan obria un projecte antic (guardat amb el C14_JSON) amb un MIDI Remote de nom nou pero apuntant als mateixos ports 'CubaseMidi', es produia un conflicte entre els dos MIDI Remotes (el del projecte i el nou), i el MIDI Remote responia de forma erratica. (No soc l'unic: hi ha forces fils al forum de Steinberg amb gent que reporta problemes semblants.)
+
+LA SOLUCIO
+
+Crear el script nou amb el MATEIX nom, els MATEIXOS ports i el MATEIX path de carpetes que el C14_JSON. Aixi Cubase l'identifica com el mateix MIDI Remote de sempre, no hi ha conflicte amb els projectes antics, i tot funciona. Per aixo aquest script "hereta" la identitat del C14_JSON: no es un descuit, es la condicio necessaria perque el MIDI Remote sigui estable. A partir d'aqui, sobre aquesta base, vaig començar a picar tot el codi nou.
+
+PER QUE FUNCIONA, TOT I SER CONTRAINTUITIU
+
+El mes desconcertant de tot aixo es que un MIDI Remote en format JSON (generat automaticament per Cubase despres d'usar el seu Editor de MIDI Remote) es pugui reemplaçar per un fitxer JS (codi de la API picat a ma) i que Cubase els tracti com si fossin EL MATEIX MIDI Remote, tot i que els dos codis no s'assemblen en res. Sembla que no hauria de funcionar, pero funciona.
+
+La clau es que, per a Cubase, la IDENTITAT d'un MIDI Remote no la defineix el contingut ni el format del codi, sino la seva 'firma' externa: el nom del deviceDriver (vendor + model + autor), els ports d'entrada/sortida que reclama, i el path on viu el fitxer. Si aquesta firma coincideix, Cubase considera que es el mateix dispositiu, encara que el fitxer hagi passat de .json (declaratiu, generat per l'editor) a .js (imperatiu, escrit a ma). El format intern es irrellevant per a la identitat; nomes compta la firma externa. Aquesta es la rao de fons per la qual el "transplantament" d'identitat del C14_JSON cap a aquest script JS va ser possible.
+
+CONSEQUENCIA PRACTICA
+
+El C14_JSON, com a tal, ja no existeix: aquest script JS l'ha reemplaçat ocupant la seva mateixa identitat (nom + ports + path). En canvi, el C14_JS si que es va eliminar com a entitat separada, i per aixo el seu port propi 'CubaseMidiApi' va quedar mort (la base de tota la vigilancia del segon translator de COC).
+
+----------------------------------------------------------------------------------------------------------------------------------------
+RELACIO AMB COC (Regio Ref.Coc)
+----------------------------------------------------------------------------------------------------------------------------------------
+
+Durant la migracio, molts missatges midi es van eliminar, desactivar o reconfigurar. COC (Cubase14_ObsoleteMidi_Canary) es el sistema EXTERN, a Bome MIDI Translator Pro, que vigila aquests missatges obsolets per si alguna font del setup encara els emet. La documentacio que ve a continuacio i la Regio Ref.Coc son complementaries: aqui es documenta QUE va passar amb cada element durant la migracio (font per font); a Ref.Coc es documenta COM funciona el sistema de vigilancia.
+
+Resum de que vigila COC, segons el que es documenta mes avall:
+- Pel port ACTIU (CubaseMidi): 51 missatges obsolets, dels quals 42 son del C14_XML (8 eliminats + 34 desactivats) i 9 del C14_JSON (6 eliminats + 1 desactivat + 2 actius amb binding canviat).
+- Pel port OBSOLET (CubaseMidiApi): 22 missatges, tots del C14_JS.
+
+Els 2 controls legacy del C14_XML (T_PUNCH IN/OUT) NO es vigilen, perque son feedback de SORTIDA (no entren mai cap a Cubase) i perque son valids i actius a Cubase 15.
+
+----------------------------------------------------------------------------------------------------------------------------------------
+COM LLEGIR ELS APARTATS DE MIGRACIO
+----------------------------------------------------------------------------------------------------------------------------------------
+
+A continuacio es documenta, font per font, que s'ha migrat, eliminat o desactivat de cada mapatge. Cada element s'ha classificat amb el vocabulari de resultat dels Excels de migracio (les tres taules .xlsx que son la font autoritativa):
+- MIGRAT I ACTIU: l'element existeix i funciona al MIDI Remote actual.
+- MIGRAT I DESACTIVAT: l'element es va portar al codi pero esta desactivat (comentat o en un array no processat). Es conserva com a referencia. Tots 34 els vigila COC pel port actiu CubaseMidi (veure Regio Ref.Coc).
+- ELIMINAT (NO MIGRAT): l'element no es va portar al codi. El vigila COC.
+- NO MIGRAT (QUEDA ACTIU AL LEGACY GENERIC REMOTE): nomes per als 2 controls de feedback que segueixen vius al Dispositivo Generico.
+
+Quan un element ha canviat de binding midi durant la migracio, s'indica amb "CANVI DE MISSATGE MIDI" i el detall del binding antic.
+
+Les tres taules .xlsx es poden revissar al seguent directori:
+~/KH/Varis/Processos boqod/Cubase - Migracio de varis dispositius midi de C14 a un unic Midi Remote a C15/
+
+----------------------------------------------------------------------------------------------------------------------------------------
+FONT 1 de 3 - C14_XML (Dispositivo Generico 1.xml) -- 70 controls
+----------------------------------------------------------------------------------------------------------------------------------------
+
+El XML original definia 70 controls: 5 de tipus NoteOn (feedback de transport, stat 144, canal 1) i 65 de tipus Control Change (stat 176, canal 1). Repartiment del resultat: 26 migrats i actius, 34 migrats i desactivats, 8 eliminats, 2 que queden al legacy.
+
+Format de linia:
+[nom al XML] (cc/note, canal) -> zona MIDI Remote -> 'elemStk al MIDI Remote'
+
+----- MIGRATS I ACTIUS (26 controls) -----
+
+Feedback de transport (NoteOn), migrat a botons de feedback de la zona Tf:
+- [T_STOP]                    note 93 (ch 1) -> zona Tf -> (boto de feedback, sense sticker)
+- [T_REC]                     note 95 (ch 1) -> zona Tf -> (boto de feedback, sense sticker)
+- [T_LOOP]                    note 86 (ch 1) -> zona Tf -> (boto de feedback, sense sticker)
+
+Controls CC migrats a la zona Ta (Transport Advanced), forçats a estat ALWAYS ON:
+- [Punch In ON]               cc 99 (ch 1)   -> zona Ta -> 'Punch In ALWAYS ON'
+- [PreRoll ON]                cc 101 (ch 1)  -> zona Ta -> 'Pre-Roll ALWAYS ON'
+- [PostRoll ON]               cc 103 (ch 1)  -> zona Ta -> 'Post-Roll ALWAYS ON'
+
+Controls CC migrats a la zona Tb (Transport Basic):
+- [PLAY-PAUSE]                cc 31 (ch 1)   -> zona Tb -> 'PLAY-PAUSE'
+- [REC]                       cc 33 (ch 1)   -> zona Tb -> 'REC'
+- [J (Localitzador Esq)]      cc 34 (ch 1)   -> zona Tb -> '← J (Localitzador Esquerra)'
+- [ReiniciarDesdeUltimoStop]  cc 79 (ch 1)   -> zona Tb -> 'Reiniciar Desde Ultim Stop'
+- [Ir a Inicio Proyecto]      cc 91 (ch 1)   -> zona Tb -> 'Inici Projecte'
+- [Ir a Final Proyecto]       cc 92 (ch 1)   -> zona Tb -> 'Final Projecte'
+- [Punch In OFF]              cc 100 (ch 1)  -> zona Tb -> 'Punch In OFF (fa toggle)'
+- [PreRoll OFF]               cc 102 (ch 1)  -> zona Tb -> 'Pre-Roll OFF (fa toggle)'
+- [PostRoll OFF]              cc 104 (ch 1)  -> zona Tb -> 'Post-Roll OFF (fa toggle)'
+- [Punch Out Toggle]          cc 108 (ch 1)  -> zona Tb -> 'Punch Out Toggle'
+
+Controls CC migrats a la zona Ub (Utility Basic):
+- [VolumEvent Up]             cc 45 (ch 1)   -> zona Ub -> 'Volum Event Up'
+- [VolumEvent Down]           cc 46 (ch 1)   -> zona Ub -> 'Volum Event Down'
+- [MetersInput]               cc 58 (ch 1)   -> zona Ub -> 'Meters: Input'
+- [MetersPostpanner]          cc 59 (ch 1)   -> zona Ub -> 'Meters: Post-Panner'
+- [Pista Anterior]            cc 82 (ch 1)   -> zona Ub -> 'Pista Anterior'
+- [Pista Seguent]             cc 83 (ch 1)   -> zona Ub -> 'Pista Seguent'
+- [Introduir Tempo]           cc 89 (ch 1)   -> zona Ub -> 'Introduir Tempo'
+- [Introduir Compas]          cc 90 (ch 1)   -> zona Ub -> 'Introduir Compas'
+- [Zona Izquierda]            cc 122 (ch 1)  -> zona Ub -> 'Zona Esquerra'
+- [Renombrar en Pool]         cc 125 (ch 1)  -> zona Ub -> 'Reanomenar a la Pool' --> CANVI DE MISSATGE MIDI: al XML era cc 123 (ch 1).
+
+----- MIGRATS I DESACTIVATS (34 controls) -----
+
+Migrats pero retirats de la superficie: a Ta queden com a codi comentat (Regio 1.Ta, Regio 2.Ta, Regio 3.Ta); a Tb i Ub queden als arrays *_CONTROLS_MAP_OBSOLETS_I_NO_USATS, que no es processen. Es conserven permanentment al codi com a referencia. Tots 34 els vigila COC pel port actiu CubaseMidi (veure Regio Ref.Coc).
+
+Desactivats a la zona Ta (codi comentat) -- 3 controls:
+- [PreCount On]               cc 109 (ch 1)  -> zona Ta -> 'PreCount ALWAYS ON'
+- [Metronom On]               cc 111 (ch 1)  -> zona Ta -> 'Metronome ALWAYS ON'
+- [Ciclo On]                  cc 60 (ch 1)   -> zona Ta -> 'Cycle ALWAYS ON'
+
+Desactivats a la zona Tb (array TB_CONTROLS_MAP_OBSOLETS_I_NO_USATS) -- 15 controls:
+- [PunchIn+PrePostRoll]       cc 40 (ch 1)   -> zona Tb -> 'PunchIn+PrePostRoll'
+- [Final Seleccion]           cc 57 (ch 1)   -> zona Tb -> 'Final Seleccion'
+- [Ciclo Off]                 cc 61 (ch 1)   -> zona Tb -> 'Ciclo Off (fa toggle)'
+- [Ciclo sigue Markers]       cc 62 (ch 1)   -> zona Tb -> 'Ciclo sigue Markers'
+- [Insert Marker Punch In]    cc 63 (ch 1)   -> zona Tb -> 'Insert Marker Punch In'
+- [Delete Marker Punch In]    cc 64 (ch 1)   -> zona Tb -> 'Delete Marker Punch In'
+- [Repr Seleccion en bucle]   cc 78 (ch 1)   -> zona Tb -> 'ReproducirSeleccionEnBucle'
+- [Punch In Alone]            cc 98 (ch 1)   -> zona Tb -> 'Punch In Alone (fa toggle)'
+- [PreCount Toggle]           cc 110 (ch 1)  -> zona Tb -> 'PreCount Toggle'
+- [Metronom Toggle]           cc 112 (ch 1)  -> zona Tb -> 'Metronom Toggle'
+- [InicioSeleccion]           cc 113 (ch 1)  -> zona Tb -> 'InicioSeleccion'
+- [Previous Marker]           cc 117 (ch 1)  -> zona Tb -> 'Previous Marker'
+- [Next Marker]               cc 118 (ch 1)  -> zona Tb -> 'Next Marker'
+- [Prev Event]                cc 120 (ch 1)  -> zona Tb -> 'Prev Event'
+- [Next Event]                cc 121 (ch 1)  -> zona Tb -> 'Next Event'
+
+Desactivats a la zona Ub (array UB_CONTROLS_MAP_OBSOLETS_I_NO_USATS) -- 16 controls:
+- [Proyecto al frente]                     cc 52 (ch 1)   -> zona Ub -> 'Proyecto al frente'
+- [MixCons2Visibilitat]                    cc 53 (ch 1)   -> zona Ub -> 'MixCons2Visibilitat'
+- [Pistes Altura x2]                       cc 65 (ch 1)   -> zona Ub -> 'Pistes Altura x2'
+- [Zoom Alejar al maximo]                  cc 67 (ch 1)   -> zona Ub -> 'Zoom Alejar al maximo'
+- [Invertir Visibilitat Pista Marker Info] cc 68 (ch 1)   -> zona Ub -> 'Invertir Visibilitat Pista Marker Info'
+- [Reducir Zoom Vertical]                  cc 69 (ch 1)   -> zona Ub -> 'Reducir Zoom Vertical'
+- [Borrar Nom All Events]                  cc 80 (ch 1)   -> zona Ub -> 'Borrar Nom All Events'
+- [Afegir Pista Anterior]                  cc 84 (ch 1)   -> zona Ub -> 'Afegir Pista Anterior'
+- [Afegir Pista Seguent]                   cc 85 (ch 1)   -> zona Ub -> 'Afegir Pista Seguent'
+- [Herramienta Seleccionar]                cc 88 (ch 1)   -> zona Ub -> 'Herramienta Seleccionar'
+- [Zona Regiones]                          cc 94 (ch 1)   -> zona Ub -> 'Zona Regiones'
+- [Conexiones VST]                         cc 97 (ch 1)   -> zona Ub -> 'Conexiones VST'
+- [Rack Routing]                           cc 105 (ch 1)  -> zona Ub -> 'Rack Routing'
+- [Rack Inserts]                           cc 106 (ch 1)  -> zona Ub -> 'Rack Inserts'
+- [Rack Sends]                             cc 107 (ch 1)  -> zona Ub -> 'Rack Sends'
+- [Configuracio de canal]                  cc 119 (ch 1)  -> zona Ub -> 'Configuracio de canal'
+
+----- ELIMINATS (NO MIGRATS) (8 controls) -----
+
+No es van portar al codi del JS C15. Tots 8 els vigila COC pel port actiu CubaseMidi (veure Regio Ref.Coc).
+
+Controls de volum i pan absolut/relatiu. La seva funcio la usava BMTP quan es movien els faders i knobs de Cubase amb el mouse:
+- [VOLUM ValorRelatiu]        cc 35 (ch 1)
+- [VOLUM ValorAbsolut]        cc 39 (ch 1)
+- [PAN ValorAbsolut]          cc 43 (ch 1)
+
+Altres controls eliminats directament per desus:
+- [PLAY only]                                     cc 41 (ch 1)
+- [PAUSE only]                                    cc 42 (ch 1)
+- [Pistes Altura Maxima]                          cc 66 (ch 1)
+- [Zoom altura maxima excepte Pista Marker Info]  cc 115 (ch 1)
+- [ReproducirDesdeLocJ]                           cc 116 (ch 1)
+
+----- NO MIGRATS (QUEDEN ACTIUS AL LEGACY GENERIC REMOTE) (2 controls) -----
+
+Decisio deliberada. Nomes 2 dels 5 controls de feedback de transport es conserven com a UNICS elements actius del Generic Remote legacy: el feedback de Punch In i Punch Out. Migrar-los al MIDI Remote obligaria a fer polling de l'estat del transport, cosa que es vol evitar. COC NO els vigila, perque son feedback de SORTIDA (no entren cap a Cubase).
+- [T_PUNCH IN]                note 87 (ch 1)
+- [T_PUNCH OUT]               note 88 (ch 1)
+
+----------------------------------------------------------------------------------------------------------------------------------------
+FONT 2 de 3 - C14_JSON (MIDI Remote creat amb l'Editor de Midi Remote) -- 120 elements
+----------------------------------------------------------------------------------------------------------------------------------------
+
+El mapatge JSON definia 120 elements. La gran majoria son families repetitives de control de mixer (volum, pan, mute, solo, select per pista de banc; parametres de plugin; sends), que es documenten com una sola linia per familia amb el rang. El tipus de missatge MIDI (CC o Note) s'indica a cada linia, perque dins d'una mateixa seccio conviuen els dos tipus (p.ex. a Sends, 'Level' son CC i 'On/Off' son Note amb el mateix numero).
+
+Format de linia:
+[nom al JSON] (cc/note, canal) -> zona MIDI Remote -> 'elemStk o rol al MIDI Remote'
+
+----- MIGRATS I ACTIUS -----
+
+Botons Utility:
+- [Mostrar Right Zone]                    cc 123 (ch 1)   -> zona Ub -> 'Zona Dreta' -------> CANVI DE MISSATGE MIDI: al JSON era cc 93 (ch 1). El cc 123 havia quedat lliure perque 'Renombrar en Pool' del XML es va reassignar a cc 125 (veure FONT 1, MIGRATS I ACTIUS).
+- [Tancar totes les finestres de Plugin]  cc 127 (ch 12) -> zona StFx -> 'Tancar Plugins' --> CANVI DE MISSATGE MIDI: al JSON era cc 3 (ch 15). El binding antic (cc 3, ch 15) queda obsolet i el vigila COC.
+
+Selected Track (canal 14 al JSON):
+- [ArmRecord]                 cc 0 (ch 14)   -> zona St -> (boto Arm) --> FUSIONAT amb el boto 'armButton' de la FONT 3 (JS C14); son el mateix boto al MIDI Remote.
+- [Mute]                      cc 1 (ch 14)   -> zona St -> 'Mute'
+- [Solo]                      cc 2 (ch 14)   -> zona St -> 'Solo'
+- [Editor]                    cc 3 (ch 14)   -> zona St -> 'Editor'
+- [Panorama]                  cc 6 (ch 14)   -> zona St -> (knob de pan)
+- [Volume]                    cc 7 (ch 14)   -> zona St -> (fader de volum)
+
+Insert FX (canal 12 al JSON):
+- [Prev Insert FX]            cc 101 (ch 12)   -> zona StFx -> 'Prev Insert FX'
+- [Next Insert FX]            cc 102 (ch 12)   -> zona StFx -> 'Next Insert FX'
+- [Bypass Plugin amb focus]   note 1 (ch 12)   -> zona StFx -> 'Bypass Plugin'
+- [Edit Plugin amb focus]     note 2 (ch 12)   -> zona StFx -> 'Edit Plugin'
+
+Bank (canal 11 al JSON), families de 6 pistes:
+- [Volume Track 1..6]         cc 1-6 (ch 11)   -> zona Bk -> faders de volum del banc
+- [Panorama Track 1..6]       cc 11-16 (ch 11) -> zona Bk -> knobs de pan del banc
+- [Mute Track 1..6]           cc 21-26 (ch 11) -> zona Bk -> botons Mute del banc
+- [Solo Track 1..6]           cc 31-36 (ch 11) -> zona Bk -> botons Solo del banc
+- [Select Track 1..6]         cc 41-46 (ch 11) -> zona Bk -> botons Select del banc
+
+Bank Navigation (canal 11 al JSON):
+- [Shift Bank Left]           cc 101 (ch 11) -> zona Bk -> (navegacio del banc) --> FUSIONAT amb el mateix boto Shift de la FONT 3 (JS C14).
+- [Shift Bank Right]          cc 102 (ch 11) -> zona Bk -> (navegacio del banc) --> FUSIONAT amb el mateix boto Shift de la FONT 3 (JS C14).
+- [Reset Bank]                cc 103 (ch 11) -> zona Bk -> (navegacio del banc) --> CANVI DE MISSATGE MIDI: al JSON era cc 125 (ch 11). FUSIONAT amb el mateix boto Reset de la FONT 3 (JS C14). El binding antic (cc 125, ch 11) queda obsolet i el vigila COC.
+- [Prev Bank]                 cc 126 (ch 11) -> zona Bk -> (navegacio del banc) --> FUSIONAT amb el mateix boto Prev Bank de la FONT 3 (JS C14).
+- [Next Bank]                 cc 127 (ch 11) -> zona Bk -> (navegacio del banc) --> FUSIONAT amb el mateix boto Next Bank de la FONT 3 (JS C14).
+
+Plugin Param Bank (canal 12 al JSON):
+- [Plugin Parameter 1..32]    cc 1-32 (ch 12) -> zona StRc -> knobs de Remote Control (knbStRcParam)
+
+Sends (canal 13 al JSON), families de 8 sends:
+- [Level Send 1..8]           cc 1-8 (ch 13)     -> zona StSd -> nivell de send
+- [On/Off Send 1..8]          note 1-8 (ch 13)   -> zona StSd -> on/off de send
+- [Pre/Post Send 1..8]        note 11-18 (ch 13) -> zona StSd -> pre/post de send
+
+Focus QC (canal 16 al JSON):
+- [Focus QC 1..8]             cc 1-8 (ch 16) -> zona Qc -> knobs de Focus Quick Control
+- [Focus QC Lock]             note 1 (ch 16) -> zona Qc -> bloqueig de Focus QC
+
+AI Knob (canal 16 al JSON):
+- [AI Knob]                   cc 0 (ch 16)   -> zona Ai -> knob AI
+- [AI Knob Lock]              note 0 (ch 16) -> zona Ai -> bloqueig de l'AI Knob
+
+----- MIGRATS I DESACTIVATS (1 control) -----
+
+Comentat al JS C15. El vigila COC pel port actiu CubaseMidi (veure Regio Ref.Coc):
+- [Locators J+L a Cursor]     cc 36 (ch 1)   -> zona Tb -> 'Localitzadors J+L a Cursor' --> CANVI DE MISSATGE MIDI: al JSON era cc 1 (ch 15). Tant el cc 36 (ch 1, binding desactivat) com el cc 1 (ch 15, binding original eliminat) queden obsolets i els vigila COC.
+
+----- ELIMINATS (NO MIGRATS) (5 missatges) -----
+
+No es van portar al JS C15. Tots els vigila COC pel port actiu CubaseMidi (veure Regio Ref.Coc):
+- [Seleccionar Pista, Añadir Proxima]     cc 120 (ch 11) --> Eliminat del JSON C14, pero existeix un element identic MIGRAT I DESACTIVAT originari del Generic Remote legacy a cc 85 (ch 1) zona Ub (veure FONT 1).
+- [Metronom ALWAYS OFF]                   cc 2 (ch 15)
+- [Tancar Plugins de pista seleccionada]  cc 4 (ch 15)
+- [Mute ALWAYS MUTED]                     cc 4 (ch 14)
+- [Mute ALWAYS UNMUTED]                   cc 5 (ch 14)
+
+----------------------------------------------------------------------------------------------------------------------------------------
+FONT 3 de 3 - C14_JS (MIDI Remote creat amb codi de la API) -- 21 elements + SysEx
+----------------------------------------------------------------------------------------------------------------------------------------
+
+El JS de Cubase 14 definia 21 elements (mes el protocol SysEx de feedback). Els noms d'origen son els noms de variable del JS C14; la zona i variable de desti son les del JS C15 actual.
+
+Format de linia:
+[nom al JS C14] (cc/note, canal) -> zona MIDI Remote -> desti al JS C15
+
+NOTA IMPORTANT SOBRE EL PORT: el C14_JS usava el port propi CubaseMidiApi, que ara esta mort. Per aixo els missatges obsolets d'aquesta font els vigila el SEGON translator de COC (monitoratge total del port CubaseMidiApi), no el primer. A mes, el seu binding nou viu (quan en te) funciona pel port actiu CubaseMidi. COC vigila 22 missatges d'aquesta font (veure Regio Ref.Coc).
+
+----- MIGRATS I ACTIUS -----
+
+Selected Track:
+- [selectedTrackFaderPosition] (sense cc; value binding) -> zona St -> fdrStVolume (feedback SysEx via SysFb.St)
+- [selectedTrackPanorama]      (sense cc; value binding) -> zona St -> knbStPan (feedback SysEx via SysFb.St)
+- [armButton]                  (sense cc; value binding) -> zona St -> btnStArm -------------------------------------------> FUSIONAT amb el boto 'ArmRecord' de la FONT 2 (JSON, cc 0 ch 14); son el mateix boto al MIDI Remote.
+- [selectedTrackName]          (sense cc; value binding) -> zona St -> feedback de nom (SysEx via SysFb.St) ---------------> CANVI DE MISSATGE MIDI: al JS C14 era el cc 11 (ch 1) d'entrada. Al JS C15 el feedback es dispara per canvi de seleccio, no per cc; el cc 11 (ch 1) queda obsolet i el vigila COC.
+- [selectedTrackColor]         (sense cc; value binding) -> zona St -> feedback de color (SysEx via SysFb.St) -------------> CANVI DE MISSATGE MIDI: al JS C14 era el cc 13 (ch 1) d'entrada. Al JS C15 el feedback es dispara per canvi de seleccio; el cc 13 (ch 1) queda obsolet i el vigila COC.
+- [selectedTrackTypeCustomValueVariable] (sense cc; value binding)  -> zona St -> feedback de tipus (SysEx via SysFb.St) --> CANVI DE MISSATGE MIDI: al JS C14 era el cc 15 (ch 1) d'entrada. Al JS C15 el feedback es dispara per canvi de seleccio; el cc 15 (ch 1) queda obsolet i el vigila COC.
+
+Insert FX:
+- [selectedTrackInsertEditButton[i]] (i=1..8)  cc 111-118 (ch 12) -> zona StFx -> btnStFxEdit[i] --> CANVI DE MISSATGE MIDI: al JS C14 era cc 1-8 (ch 1). Aquest era direccio Out (feedback); COC no el vigila.
+- [selectedTrackInsertEditVar[i]] (i=1..8)     cc 111-118 (ch 12) -> zona StFx -> cvvStFxEdit[i] --> CANVI DE MISSATGE MIDI: al JS C14 era cc 1-8 (ch 1) d'entrada. Els cc 1-8 (ch 1) queden obsolets i els vigila COC.
+
+Bank (feedback):
+- [bankTrack[i]] (i=1..6)         (sense cc; mixer bank channel) -> zona Bk -> pistes del banc
+- [bankPanValues[i]] (i=1..6)     (sense cc; value binding)      -> zona Bk -> knobs de pan (feedback SysEx via SysFb.Bk)
+- [bankFaderValues[i]] (i=1..6)   (sense cc; value binding)      -> zona Bk -> faders de volum (feedback SysEx via SysFb.Bk)
+
+Bank (navegacio):
+- [Shift Bank Left]           cc 101 (ch 11) -> zona Bk -> (navegacio del banc) --> FUSIONAT amb el mateix boto Shift de la FONT 2 (JSON).
+- [Shift Bank Right]          cc 102 (ch 11) -> zona Bk -> (navegacio del banc) --> FUSIONAT amb el mateix boto Shift de la FONT 2 (JSON).
+- [Reset Bank]                cc 103 (ch 11) -> zona Bk -> (navegacio del banc) --> FUSIONAT amb el mateix boto Reset de la FONT 2 (JSON).
+- [Prev Bank]                 cc 126 (ch 11) -> zona Bk -> (navegacio del banc) --> FUSIONAT amb el mateix boto Prev Bank de la FONT 2 (JSON).
+- [Next Bank]                 cc 127 (ch 11) -> zona Bk -> (navegacio del banc) --> FUSIONAT amb el mateix boto Next Bank de la FONT 2 (JSON).
+
+Global / Refresc:
+- [refreshButton]             cc 16 (ch 10) -> zona Gh -> dispara refreshMidiRemote (veure Regio Func) --> CANVI DE MISSATGE MIDI: al JS C14 era cc 16 (ch 1) d'entrada. El cc 16 (ch 1) i el cc 0 (ch 1) queden obsolets i els vigila COC.
+- [customHostRefresh]         (sense cc; HostValueVariable dummy) -> zona Gh -> alimenta el refresc global
+
+----- ELIMINATS (NO MIGRATS) -----
+
+No es van portar al JS C15. Els vigila COC pel port obsolet CubaseMidiApi (veure Regio Ref.Coc):
+- [selectedTrackFaderPositionNotBindedToFaderPosition (PAN)]    cc 12 (ch 1)   (re-enviava SysEx de PAN)
+- [selectedTrackFaderPositionNotBindedToFaderPosition (FADER)]  cc 14 (ch 1)   (re-enviava SysEx de FADER)
+- [bankTrackInfoNotBindedToAnything]                            cc 0 (ch 11)   (re-enviava tot el feedback del banc)
+
+NOTA: COC vigila 22 missatges d'aquesta font, no nomes aquests 3 eliminats purs. La resta son els bindings antics dels elements MIGRATS I ACTIUS de mes amunt (cc 0-8, 11, 13, 15, 16 al canal 1; i un bloc al canal 11), que van quedar orfes en canviar de binding/port. El detall complet dels 22 viu al map del segon translator de COC.
+
+----- PROTOCOL SYSEX DE FEEDBACK -----
+
+El protocol SysEx de feedback (11 missatges: Selected Track Name/Pan/Color/Type/Fader, Insert FX Slot Names, i Bank Track Names/Colors/Pans/Faders/Types) es va migrar byte a byte sense cap modificacio del JS C14 al JS C15. Es direccio Out (feedback de sortida), aixi que COC no el vigila. El detall per missatge viu a la pestanya SysEx de l'Excel del JS C14 i, al codi d'aquest script, a la Regio SysFb i a la Regio Ref.Tech (CONSTANTS & VARIABLES FOR BUILDING SYSEX MESSAGES).
+
+========================================================================================================================================
+DOCUMENTACIO AMPLIADA
+========================================================================================================================================
+
+Tota la informacio ampliada del proces de migracio dels tres mapatges midi de C14 a aquest unic MIDI Remote de C15, aixi com els fitxers de referencia, enllaços i materials relacionats, es troba en aquest directori:
+
+~/KH/Varis/Processos boqod/Cubase - Migracio de varis dispositius midi de C14 a un unic Midi Remote a C15/
+
+Aquest mateix directori es el que referencien els footers dels fitxers .txt que genera COC quan no se sap que fer davant d'un missatge obsolet detectat.
